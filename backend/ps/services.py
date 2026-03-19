@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+from django.db import transaction
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from ps.rbac import ActingRole
@@ -13,10 +14,19 @@ from ps.selectors import (
     get_first_holder_by_designation,
     get_indent_data,
     get_indent_for_hod_action,
+    get_indent_for_stock_entry,
     get_indent_for_stock_check,
     validate_store_item_ids,
 )
-from ps.models import Indent, IndentAudit, IndentItem
+from ps.models import (
+    CurrentStock,
+    Indent,
+    IndentAudit,
+    IndentItem,
+    StockEntry,
+    StockEntryItem,
+)
+from ps.serializers import StockEntrySerializer
 
 
 def create_indent(validated_data: Dict[str, Any], actor, request_user) -> dict:
@@ -52,7 +62,9 @@ def create_indent(validated_data: Dict[str, Any], actor, request_user) -> dict:
     hod = get_department_hod(department)
     indent.current_approver = hod if hod else get_department_depadmin(department)
     indent.status = Indent.Status.SUBMITTED
-    indent.save(update_fields=["stock_available", "current_approver", "status", "updated_at"])
+    indent.save(
+        update_fields=["stock_available", "current_approver", "status", "updated_at"]
+    )
 
     IndentAudit.objects.create(
         indent=indent,
@@ -80,9 +92,13 @@ def apply_hod_action(
     if action_name == "APPROVE":
         if actor.role == ActingRole.DEPADMIN:
             if indent.status != Indent.Status.STOCK_CHECKED:
-                raise ValidationError({"detail": "Please check stock before approving."})
+                raise ValidationError(
+                    {"detail": "Please check stock before approving."}
+                )
             indent.status = (
-                Indent.Status.INTERNAL_ISSUED if indent.stock_available else Indent.Status.EXTERNAL_PROCUREMENT
+                Indent.Status.INTERNAL_ISSUED
+                if indent.stock_available
+                else Indent.Status.EXTERNAL_PROCUREMENT
             )
             indent.current_approver = None
             indent.save(update_fields=["status", "current_approver", "updated_at"])
@@ -90,7 +106,9 @@ def apply_hod_action(
         elif actor.role == ActingRole.HOD:
             next_approver = get_department_depadmin(indent.department)
             if not next_approver:
-                raise ValidationError({"detail": "No DepAdmin found for this department."})
+                raise ValidationError(
+                    {"detail": "No DepAdmin found for this department."}
+                )
             indent.current_approver = next_approver
             indent.status = Indent.Status.FORWARDED
             indent.save(update_fields=["status", "current_approver", "updated_at"])
@@ -114,8 +132,12 @@ def apply_hod_action(
             target_hod = get_department_hod(target_dept)
             indent.department = target_dept
             indent.current_approver = target_hod
-            indent.status = Indent.Status.FORWARDED if target_hod else Indent.Status.SUBMITTED
-            indent.save(update_fields=["department", "current_approver", "status", "updated_at"])
+            indent.status = (
+                Indent.Status.FORWARDED if target_hod else Indent.Status.SUBMITTED
+            )
+            indent.save(
+                update_fields=["department", "current_approver", "status", "updated_at"]
+            )
         else:
             if actor.role != ActingRole.DEPADMIN:
                 raise PermissionDenied("Only DepAdmin can forward to Director.")
@@ -144,10 +166,14 @@ def check_stock_action(indent_id: int, actor, request_user) -> dict:
 
     indent.stock_available = check_stock_availability_for_indent_id(indent.id)
     indent.procurement_type = (
-        Indent.ProcurementType.INTERNAL if indent.stock_available else Indent.ProcurementType.EXTERNAL
+        Indent.ProcurementType.INTERNAL
+        if indent.stock_available
+        else Indent.ProcurementType.EXTERNAL
     )
     indent.status = Indent.Status.STOCK_CHECKED
-    indent.save(update_fields=["stock_available", "procurement_type", "status", "updated_at"])
+    indent.save(
+        update_fields=["stock_available", "procurement_type", "status", "updated_at"]
+    )
 
     IndentAudit.objects.create(
         indent=indent,
@@ -159,3 +185,67 @@ def check_stock_action(indent_id: int, actor, request_user) -> dict:
 
     return get_indent_data(indent.id)
 
+
+def create_stock_entry(
+    indent_id: int,
+    actor,
+    request_user,
+    item_lines: list[dict],
+    notes: str = "",
+) -> dict:
+    indent = get_indent_for_stock_entry(indent_id, actor)
+
+    requested_map = {
+        int(line.item_id): int(line.quantity) for line in indent.items.all()
+    }
+    payload_map = {int(line["item_id"]): int(line["quantity"]) for line in item_lines}
+
+    if set(requested_map.keys()) != set(payload_map.keys()):
+        raise ValidationError(
+            {"items": "Payload items must exactly match indent items."}
+        )
+
+    for item_id, qty in payload_map.items():
+        if qty <= 0:
+            raise ValidationError(
+                {"items": f"Quantity must be > 0 for item_id {item_id}."}
+            )
+        if qty != requested_map[item_id]:
+            raise ValidationError(
+                {"items": f"Quantity mismatch for item_id {item_id}."}
+            )
+
+    with transaction.atomic():
+        entry = StockEntry.objects.create(
+            indent=indent,
+            created_by=request_user,
+            acting_role=actor.role,
+            notes=notes or "",
+        )
+
+        for item_id, qty in payload_map.items():
+            StockEntryItem.objects.create(
+                stock_entry=entry, item_id=item_id, quantity=qty
+            )
+            stock, _ = CurrentStock.objects.get_or_create(
+                item_id=item_id, defaults={"quantity": 0}
+            )
+            stock.quantity += qty
+            stock.save(update_fields=["quantity", "updated_at"])
+
+        indent.status = Indent.Status.STOCKED
+        indent.current_approver = None
+        indent.save(update_fields=["status", "current_approver", "updated_at"])
+
+        IndentAudit.objects.create(
+            indent=indent,
+            user=request_user,
+            acting_role=actor.role,
+            action="STOCK_ENTRY",
+            notes=notes or "",
+        )
+
+    return {
+        "indent": get_indent_data(indent.id),
+        "stock_entry": StockEntrySerializer(entry).data,
+    }

@@ -27,13 +27,17 @@ def has_designation(extrainfo: ExtraInfo, name_contains: str) -> bool:
 
 def is_user_hod(extrainfo: ExtraInfo) -> bool:
     # Treat common variants as department head
-    return HoldsDesignation.objects.filter(is_active=True, working=extrainfo).filter(
-        designation__name__icontains="hod"
-    ).exists() or HoldsDesignation.objects.filter(is_active=True, working=extrainfo).filter(
-        designation__name__icontains="dept head"
-    ).exists() or HoldsDesignation.objects.filter(is_active=True, working=extrainfo).filter(
-        designation__name__icontains="head of department"
-    ).exists()
+    return (
+        HoldsDesignation.objects.filter(is_active=True, working=extrainfo)
+        .filter(designation__name__icontains="hod")
+        .exists()
+        or HoldsDesignation.objects.filter(is_active=True, working=extrainfo)
+        .filter(designation__name__icontains="dept head")
+        .exists()
+        or HoldsDesignation.objects.filter(is_active=True, working=extrainfo)
+        .filter(designation__name__icontains="head of department")
+        .exists()
+    )
 
 
 def validate_store_item_ids(item_ids: Sequence[int]) -> None:
@@ -41,7 +45,9 @@ def validate_store_item_ids(item_ids: Sequence[int]) -> None:
     if not item_ids_set:
         return
 
-    existing = set(StoreItem.objects.filter(id__in=item_ids_set).values_list("id", flat=True))
+    existing = set(
+        StoreItem.objects.filter(id__in=item_ids_set).values_list("id", flat=True)
+    )
     missing = sorted([i for i in item_ids_set if i not in existing])
     if missing:
         raise ValidationError({"item_id": f"Unknown item_ids: {missing}"})
@@ -49,7 +55,9 @@ def validate_store_item_ids(item_ids: Sequence[int]) -> None:
 
 def get_department_hod(department: DepartmentInfo) -> Optional[ExtraInfo]:
     hold = (
-        HoldsDesignation.objects.select_related("working", "designation", "working__department")
+        HoldsDesignation.objects.select_related(
+            "working", "designation", "working__department"
+        )
         .filter(
             is_active=True,
             designation__name__iregex=r"(hod|dept head|head of department)",
@@ -62,7 +70,9 @@ def get_department_hod(department: DepartmentInfo) -> Optional[ExtraInfo]:
 
 def get_department_depadmin(department: DepartmentInfo) -> Optional[ExtraInfo]:
     hold = (
-        HoldsDesignation.objects.select_related("working", "designation", "working__department")
+        HoldsDesignation.objects.select_related(
+            "working", "designation", "working__department"
+        )
         .filter(
             is_active=True,
             designation__name__icontains="depadmin",
@@ -75,7 +85,9 @@ def get_department_depadmin(department: DepartmentInfo) -> Optional[ExtraInfo]:
 
 def get_first_holder_by_designation(name_contains: str) -> Optional[ExtraInfo]:
     hold = (
-        HoldsDesignation.objects.select_related("working", "designation", "working__department")
+        HoldsDesignation.objects.select_related(
+            "working", "designation", "working__department"
+        )
         .filter(is_active=True, designation__name__icontains=name_contains)
         .first()
     )
@@ -83,7 +95,9 @@ def get_first_holder_by_designation(name_contains: str) -> Optional[ExtraInfo]:
 
 
 def get_registrar_or_director() -> Optional[ExtraInfo]:
-    return get_first_holder_by_designation("registrar") or get_first_holder_by_designation("director")
+    return get_first_holder_by_designation(
+        "registrar"
+    ) or get_first_holder_by_designation("director")
 
 
 def get_accounts_admin() -> Optional[ExtraInfo]:
@@ -93,7 +107,9 @@ def get_accounts_admin() -> Optional[ExtraInfo]:
 def get_department_by_code(code: str) -> DepartmentInfo:
     dept = DepartmentInfo.objects.filter(code__iexact=code).first()
     if not dept:
-        raise ValidationError({"forward_to_department_code": "Unknown department code."})
+        raise ValidationError(
+            {"forward_to_department_code": "Unknown department code."}
+        )
     return dept
 
 
@@ -103,13 +119,17 @@ def check_stock_availability_for_indent_id(indent_id: int) -> bool:
 
     Returns True only if, for every indent line, available stock >= requested quantity.
     """
-    lines = list(IndentItem.objects.filter(indent_id=indent_id).values("item_id", "quantity"))
+    lines = list(
+        IndentItem.objects.filter(indent_id=indent_id).values("item_id", "quantity")
+    )
     if not lines:
         return False
 
     item_ids = [l["item_id"] for l in lines]
     stock_map: Dict[int, int] = dict(
-        CurrentStock.objects.filter(item_id__in=item_ids).values_list("item_id", "quantity")
+        CurrentStock.objects.filter(item_id__in=item_ids).values_list(
+            "item_id", "quantity"
+        )
     )
 
     for l in lines:
@@ -182,13 +202,15 @@ def get_stock_breakdown_data(indent_id: int, actor) -> dict:
         raise PermissionDenied("Cannot view other department's indent.")
 
     lines = list(
-        IndentItem.objects.filter(indent_id=indent_id).select_related("item").values(
-            "item_id", "quantity", "item__name"
-        )
+        IndentItem.objects.filter(indent_id=indent_id)
+        .select_related("item")
+        .values("item_id", "quantity", "item__name")
     )
     item_ids = [l["item_id"] for l in lines]
     stock_map: Dict[int, int] = dict(
-        CurrentStock.objects.filter(item_id__in=item_ids).values_list("item_id", "quantity")
+        CurrentStock.objects.filter(item_id__in=item_ids).values_list(
+            "item_id", "quantity"
+        )
     )
 
     breakdown: List[dict] = []
@@ -214,13 +236,25 @@ def get_stock_breakdown_data(indent_id: int, actor) -> dict:
 
 
 def get_indents_for_actor_data(actor) -> List[dict]:
-    qs = (
-        Indent.objects.select_related("indenter", "department", "current_approver")
-        .prefetch_related("items__item")
-    )
+    qs = Indent.objects.select_related(
+        "indenter", "department", "current_approver"
+    ).prefetch_related("items__item")
     if actor.role == ActingRole.EMPLOYEE:
         qs = qs.filter(indenter=actor.extrainfo)
-    elif actor.role in (ActingRole.DEPADMIN, ActingRole.HOD, ActingRole.REGISTRAR, ActingRole.DIRECTOR):
+    elif actor.role == ActingRole.PS_ADMIN:
+        qs = qs.filter(
+            status__in=[
+                Indent.Status.EXTERNAL_PROCUREMENT,
+                Indent.Status.APPROVED,
+                Indent.Status.STOCKED,
+            ]
+        )
+    elif actor.role in (
+        ActingRole.DEPADMIN,
+        ActingRole.HOD,
+        ActingRole.REGISTRAR,
+        ActingRole.DIRECTOR,
+    ):
         qs = qs.filter(current_approver=actor.extrainfo)
     else:
         raise PermissionDenied("Unauthorized")
@@ -258,6 +292,8 @@ def get_me_payload(user) -> dict:
     allowed = [ActingRole.EMPLOYEE]
     if has_designation(extrainfo, "depadmin"):
         allowed.append(ActingRole.DEPADMIN)
+    if has_designation(extrainfo, "ps admin"):
+        allowed.append(ActingRole.PS_ADMIN)
     if is_user_hod(extrainfo):
         allowed.append(ActingRole.HOD)
     if has_designation(extrainfo, "registrar"):
@@ -267,7 +303,10 @@ def get_me_payload(user) -> dict:
 
     return {
         "user": {"id": user.id, "username": user.username},
-        "department": {"id": extrainfo.department_id, "code": extrainfo.department.code},
+        "department": {
+            "id": extrainfo.department_id,
+            "code": extrainfo.department.code,
+        },
         "allowed_roles": allowed,
     }
 
@@ -295,3 +334,50 @@ def get_store_item_stock_check_status(item_id: int, required: int) -> dict:
         "status": status,
     }
 
+
+def get_procurement_ready_indents_for_actor_data(actor) -> List[dict]:
+    if actor.role not in (ActingRole.DEPADMIN, ActingRole.PS_ADMIN):
+        raise PermissionDenied(
+            "Only DepAdmin/PS Admin can view procurement-ready indents."
+        )
+
+    qs = (
+        Indent.objects.select_related("indenter", "department", "current_approver")
+        .prefetch_related("items__item")
+        .filter(status__in=[Indent.Status.EXTERNAL_PROCUREMENT, Indent.Status.APPROVED])
+    )
+
+    if actor.role == ActingRole.DEPADMIN:
+        qs = qs.filter(department=actor.extrainfo.department)
+
+    return IndentSerializer(qs.order_by("-updated_at"), many=True).data
+
+
+def get_indent_for_stock_entry(indent_id: int, actor) -> Indent:
+    if actor.role not in (ActingRole.DEPADMIN, ActingRole.PS_ADMIN):
+        raise PermissionDenied("Only DepAdmin/PS Admin can create stock entry.")
+
+    indent = (
+        Indent.objects.select_related("department")
+        .prefetch_related("items")
+        .filter(id=indent_id)
+        .first()
+    )
+    if not indent:
+        raise ValidationError({"detail": "Indent not found."})
+
+    if indent.status not in (
+        Indent.Status.EXTERNAL_PROCUREMENT,
+        Indent.Status.APPROVED,
+    ):
+        raise ValidationError(
+            {"detail": "Stock entry is allowed only for approved procurement indents."}
+        )
+
+    if (
+        actor.role == ActingRole.DEPADMIN
+        and indent.department_id != actor.extrainfo.department_id
+    ):
+        raise PermissionDenied("Cannot create stock entry for another department.")
+
+    return indent

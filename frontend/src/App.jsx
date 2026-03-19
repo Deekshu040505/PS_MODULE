@@ -55,7 +55,7 @@ function App() {
 
   const actingRole = useMemo(() => {
     const r = (role || 'EMPLOYEE').toUpperCase();
-    if (['EMPLOYEE', 'DEPADMIN', 'HOD', 'REGISTRAR', 'DIRECTOR'].includes(r)) return r;
+    if (['EMPLOYEE', 'DEPADMIN', 'PS_ADMIN', 'HOD', 'REGISTRAR', 'DIRECTOR'].includes(r)) return r;
     return 'EMPLOYEE';
   }, [role]);
 

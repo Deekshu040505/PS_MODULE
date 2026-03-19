@@ -54,6 +54,15 @@ export async function readStockBreakdown({ actingRole, indentId }) {
   }
 }
 
+export async function readProcurementReady({ actingRole }) {
+  try {
+    const res = await client.get('/ps/api/indents/procurement-ready/', { headers: authHeaders(actingRole) });
+    return res.data;
+  } catch (err) {
+    throwAxiosError(err);
+  }
+}
+
 // Writes
 export async function writeCreateIndent({ actingRole, payload }) {
   try {
@@ -78,6 +87,17 @@ export async function writeHodAction({ actingRole, indentId, payload }) {
 export async function writeCheckStock({ actingRole, indentId }) {
   try {
     const res = await client.post(`/ps/api/indents/${indentId}/check-stock/`, {}, { headers: authHeaders(actingRole) });
+    return res.data;
+  } catch (err) {
+    throwAxiosError(err);
+  }
+}
+
+export async function writeCreateStockEntry({ actingRole, indentId, payload }) {
+  try {
+    const res = await client.post(`/ps/api/indents/${indentId}/create-stock-entry/`, payload, {
+      headers: authHeaders(actingRole),
+    });
     return res.data;
   } catch (err) {
     throwAxiosError(err);

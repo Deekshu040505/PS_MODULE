@@ -8,6 +8,7 @@ from accounts.models import ExtraInfo
 class ActingRole:
     EMPLOYEE = "EMPLOYEE"
     DEPADMIN = "DEPADMIN"
+    PS_ADMIN = "PS_ADMIN"
     HOD = "HOD"
     REGISTRAR = "REGISTRAR"
     DIRECTOR = "DIRECTOR"
@@ -31,6 +32,7 @@ def user_is_hod(extrainfo: ExtraInfo) -> bool:
 
     return is_user_hod(extrainfo)
 
+
 def user_has_designation(extrainfo: ExtraInfo, name_contains: str) -> bool:
     from ps.selectors import has_designation
 
@@ -50,6 +52,8 @@ def get_actor_context(request) -> ActorContext:
         return ActorContext(role=role, extrainfo=extrainfo)
     if role == ActingRole.DEPADMIN and user_has_designation(extrainfo, "depadmin"):
         return ActorContext(role=role, extrainfo=extrainfo)
+    if role == ActingRole.PS_ADMIN and user_has_designation(extrainfo, "ps admin"):
+        return ActorContext(role=role, extrainfo=extrainfo)
     if role == ActingRole.HOD and user_is_hod(extrainfo):
         return ActorContext(role=role, extrainfo=extrainfo)
     if role == ActingRole.REGISTRAR and user_has_designation(extrainfo, "registrar"):
@@ -57,4 +61,3 @@ def get_actor_context(request) -> ActorContext:
     if role == ActingRole.DIRECTOR and user_has_designation(extrainfo, "director"):
         return ActorContext(role=role, extrainfo=extrainfo)
     raise PermissionError("Invalid or unauthorized acting role")
-

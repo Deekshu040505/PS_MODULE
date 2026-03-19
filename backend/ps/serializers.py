@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from ps.models import Indent, IndentItem, StoreItem
+from ps.models import Indent, IndentItem, StockEntry, StockEntryItem, StoreItem
 
 
 class StoreItemSerializer(serializers.ModelSerializer):
@@ -14,7 +14,9 @@ class StoreItemSerializer(serializers.ModelSerializer):
 class IndentItemWriteSerializer(serializers.Serializer):
     item_id = serializers.IntegerField()
     quantity = serializers.IntegerField(min_value=1)
-    estimated_cost = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+    estimated_cost = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True
+    )
 
 
 class IndentItemReadSerializer(serializers.ModelSerializer):
@@ -58,7 +60,9 @@ class IndentSerializer(serializers.ModelSerializer):
 class IndentCreateSerializer(serializers.Serializer):
     purpose = serializers.CharField(max_length=255)
     justification = serializers.CharField(allow_blank=True, required=False)
-    estimated_cost = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+    estimated_cost = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True
+    )
     items = IndentItemWriteSerializer(many=True)
 
     def validate_items(self, items):
@@ -75,3 +79,36 @@ class HODActionSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True)
     forward_to_department_code = serializers.CharField(required=False, allow_blank=True)
 
+
+class StockEntryItemWriteSerializer(serializers.Serializer):
+    item_id = serializers.IntegerField()
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class StockEntryCreateSerializer(serializers.Serializer):
+    notes = serializers.CharField(required=False, allow_blank=True)
+    items = StockEntryItemWriteSerializer(many=True)
+
+    def validate_items(self, items):
+        if not items:
+            raise serializers.ValidationError("At least one item is required.")
+        item_ids = [i["item_id"] for i in items]
+        if len(item_ids) != len(set(item_ids)):
+            raise serializers.ValidationError("Duplicate item entries are not allowed.")
+        return items
+
+
+class StockEntryItemSerializer(serializers.ModelSerializer):
+    item = StoreItemSerializer()
+
+    class Meta:
+        model = StockEntryItem
+        fields = ["id", "item", "quantity"]
+
+
+class StockEntrySerializer(serializers.ModelSerializer):
+    items = StockEntryItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = StockEntry
+        fields = ["id", "indent", "acting_role", "notes", "created_at", "items"]

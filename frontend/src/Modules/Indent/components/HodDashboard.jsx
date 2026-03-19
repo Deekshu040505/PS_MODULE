@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { readDecisions, readIndents } from '../api';
+import { readDecisions, readIndents, readProcurementReady } from '../api';
 import HodActionBar from './HodActionBar';
 
 export default function HodDashboard({ actingRole, refreshKey }) {
@@ -18,6 +18,9 @@ export default function HodDashboard({ actingRole, refreshKey }) {
         if (tab === 'DECIDED') {
           const data = await readDecisions({ actingRole });
           if (!cancelled) setDecisions(data);
+        } else if (tab === 'PROCUREMENT') {
+          const data = await readProcurementReady({ actingRole });
+          if (!cancelled) setIndents(data);
         } else {
           const data = await readIndents({ actingRole });
           if (!cancelled) setIndents(data);
@@ -36,22 +39,33 @@ export default function HodDashboard({ actingRole, refreshKey }) {
   const list = tab === 'DECIDED' ? decisions : indents;
   const normalizedQuery = query.trim().toLowerCase();
   const filtered = normalizedQuery ? list.filter((i) => (i.purpose || '').toLowerCase().includes(normalizedQuery)) : list;
+  const showProcurementTab = actingRole === 'DEPADMIN' || actingRole === 'PS_ADMIN';
+  const title = tab === 'DECIDED' ? 'My decisions' : tab === 'PROCUREMENT' ? 'Procurement ready' : 'Approval queue';
 
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>{tab === 'DECIDED' ? 'My decisions' : 'Approval queue'}</h2>
+        <h2 style={{ margin: 0 }}>{title}</h2>
         <div className="row">
           <button className={tab === 'PENDING' ? 'chip active' : 'chip'} type="button" onClick={() => setTab('PENDING')}>
             Pending
           </button>
+          {showProcurementTab ? (
+            <button
+              className={tab === 'PROCUREMENT' ? 'chip active' : 'chip'}
+              type="button"
+              onClick={() => setTab('PROCUREMENT')}
+            >
+              Procurement Ready
+            </button>
+          ) : null}
           <button className={tab === 'DECIDED' ? 'chip active' : 'chip'} type="button" onClick={() => setTab('DECIDED')}>
             Approved/Rejected
           </button>
         </div>
       </div>
 
-      {actingRole === 'DEPADMIN' ? (
+      {actingRole === 'DEPADMIN' || actingRole === 'PS_ADMIN' ? (
         <div className="row" style={{ marginTop: 10 }}>
           <input
             value={query}
@@ -80,11 +94,19 @@ export default function HodDashboard({ actingRole, refreshKey }) {
                 {i.procurement_type ? <div className="badge">Type: {i.procurement_type}</div> : null}
               </div>
             </div>
-            {tab === 'PENDING' ? <HodActionBar actingRole={actingRole} indent={i} onDone={() => setTick((t) => t + 1)} /> : null}
+            {tab !== 'DECIDED' ? (
+              <HodActionBar actingRole={actingRole} indent={i} mode={tab} onDone={() => setTick((t) => t + 1)} />
+            ) : null}
           </div>
         ))}
         {!filtered.length && !error ? (
-          <div className="muted">{tab === 'DECIDED' ? 'No approved/rejected indents yet.' : 'No indents assigned to you.'}</div>
+          <div className="muted">
+            {tab === 'DECIDED'
+              ? 'No approved/rejected indents yet.'
+              : tab === 'PROCUREMENT'
+                ? 'No procurement-ready indents.'
+                : 'No indents assigned to you.'}
+          </div>
         ) : null}
       </div>
     </div>

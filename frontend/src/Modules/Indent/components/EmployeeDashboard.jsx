@@ -45,7 +45,7 @@ export default function EmployeeDashboard({ actingRole, refreshKey }) {
         <button className={filter === 'ALL' ? 'chip active' : 'chip'} onClick={() => setFilter('ALL')}>
           All ({counts.ALL || 0})
         </button>
-        {['SUBMITTED', 'UNDER_HOD_REVIEW', 'FORWARDED', 'APPROVED', 'REJECTED'].map((s) => (
+        {['SUBMITTED', 'UNDER_HOD_REVIEW', 'FORWARDED', 'APPROVED', 'EXTERNAL_PROCUREMENT', 'STOCKED', 'REJECTED'].map((s) => (
           <button key={s} className={filter === s ? 'chip active' : 'chip'} onClick={() => setFilter(s)}>
             {s} ({counts[s] || 0})
           </button>

@@ -8,10 +8,20 @@ from ps.selectors import (
     get_indent_decisions_for_actor_data,
     get_indents_for_actor_data,
     get_me_payload,
+    get_procurement_ready_indents_for_actor_data,
     get_stock_breakdown_data,
 )
-from ps.services import apply_hod_action, check_stock_action, create_indent
-from ps.serializers import HODActionSerializer, IndentCreateSerializer
+from ps.services import (
+    apply_hod_action,
+    check_stock_action,
+    create_indent,
+    create_stock_entry,
+)
+from ps.serializers import (
+    HODActionSerializer,
+    IndentCreateSerializer,
+    StockEntryCreateSerializer,
+)
 
 
 class IndentViewSet(viewsets.ViewSet):
@@ -39,6 +49,11 @@ class IndentViewSet(viewsets.ViewSet):
             raise PermissionDenied("Only approver roles can view decisions.")
         return Response(get_indent_decisions_for_actor_data(actor, request.user))
 
+    @action(detail=False, methods=["get"], url_path="procurement-ready")
+    def procurement_ready(self, request):
+        actor = self._actor()
+        return Response(get_procurement_ready_indents_for_actor_data(actor))
+
     @action(detail=True, methods=["post"], url_path="hod-action")
     def hod_action(self, request, pk=None):
         actor = self._actor()
@@ -47,7 +62,9 @@ class IndentViewSet(viewsets.ViewSet):
 
         action_name = data_ser.validated_data["action"]
         notes = data_ser.validated_data.get("notes", "")
-        forward_to_department_code = data_ser.validated_data.get("forward_to_department_code")
+        forward_to_department_code = data_ser.validated_data.get(
+            "forward_to_department_code"
+        )
 
         data = apply_hod_action(
             indent_id=pk,
@@ -67,7 +84,23 @@ class IndentViewSet(viewsets.ViewSet):
     @action(detail=True, methods=["post"], url_path="check-stock")
     def check_stock_action(self, request, pk=None):
         actor = self._actor()
-        return Response(check_stock_action(indent_id=pk, actor=actor, request_user=request.user))
+        return Response(
+            check_stock_action(indent_id=pk, actor=actor, request_user=request.user)
+        )
+
+    @action(detail=True, methods=["post"], url_path="create-stock-entry")
+    def create_stock_entry(self, request, pk=None):
+        actor = self._actor()
+        serializer = StockEntryCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = create_stock_entry(
+            indent_id=pk,
+            actor=actor,
+            request_user=request.user,
+            item_lines=serializer.validated_data["items"],
+            notes=serializer.validated_data.get("notes", ""),
+        )
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class MeViewSet(viewsets.ViewSet):
@@ -78,4 +111,3 @@ class MeViewSet(viewsets.ViewSet):
 
     def list(self, request):
         return Response(get_me_payload(request.user))
-
